@@ -3,6 +3,12 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+from nltk.stem import PorterStemmer
+from nltk.tokenize import word_tokenize
+import nltk
+
+# Download necessary NLTK data
+nltk.download('punkt', quiet=True)
 
 # RS Online description
 RS_ONLINE_DESCRIPTION = """
@@ -29,18 +35,43 @@ Semiconductors: Although not a core focus, RS provides a range of semiconductors
 RS also offers technical support, design services, and procurement solutions, making them a go-to partner for engineers and businesses looking for reliable components and services in the industrial and technical space.
 """
 
-# Industry-specific keywords
+# Expanded industry-specific keywords
 INDUSTRY_KEYWORDS = set([
     "industrial", "electronic", "distributor", "components", "manufacturing", "engineering",
     "automation", "control", "aerospace", "automotive", "healthcare", "energy", "utilities",
     "construction", "connectors", "electrification", "cables", "wires", "test", "measurement",
     "plc", "motors", "drives", "sensors", "robotics", "safety", "ppe", "bearings", "fasteners",
-    "hvac", "semiconductors", "microcontrollers", "transistors"
+    "hvac", "semiconductors", "microcontrollers", "transistors", "resistors", "capacitors",
+    "inductors", "relays", "switches", "power supplies", "circuit protection", "pcb", "led",
+    "iot", "wireless", "networking", "embedded", "analog", "digital", "thermal management",
+    "enclosures", "connectors", "terminals", "hardware", "tools", "test equipment", "calibration",
+    "pneumatics", "hydraulics", "motion control", "process control", "instruments", "meters",
+    "oscilloscopes", "power tools", "hand tools", "adhesives", "lubricants", "chemicals",
+    "3d printing", "prototyping", "development kits", "engineering design", "technical support"
 ])
+
+ps = PorterStemmer()
+
+def custom_tokenizer(text):
+    # Tokenize the text
+    tokens = word_tokenize(text.lower())
+    # Stem the tokens
+    stemmed_tokens = [ps.stem(token) for token in tokens]
+    # Join stemmed tokens back into compound words
+    compound_tokens = []
+    i = 0
+    while i < len(stemmed_tokens):
+        if i + 1 < len(stemmed_tokens) and f"{stemmed_tokens[i]} {stemmed_tokens[i+1]}" in INDUSTRY_KEYWORDS:
+            compound_tokens.append(f"{stemmed_tokens[i]} {stemmed_tokens[i+1]}")
+            i += 2
+        else:
+            compound_tokens.append(stemmed_tokens[i])
+            i += 1
+    return compound_tokens
 
 def preprocess_text(text: str) -> str:
     # Convert to lowercase and remove special characters
-    text = re.sub(r'[^a-zA-Z\s]', '', text.lower())
+    text = re.sub(r'[^a-zA-Z\s]', ' ', text.lower())
     # Remove extra whitespace
     text = ' '.join(text.split())
     return text
@@ -52,8 +83,13 @@ def calculate_content_similarity(source_content: str, rs_description: str) -> fl
     # Preprocess texts
     preprocessed_texts = [preprocess_text(text) for text in all_texts]
     
-    # Create TF-IDF vectors with focus on industry-specific keywords
-    vectorizer = TfidfVectorizer(vocabulary=INDUSTRY_KEYWORDS)
+    # Create TF-IDF vectors with focus on industry-specific keywords and custom tokenizer
+    vectorizer = TfidfVectorizer(
+        tokenizer=custom_tokenizer,
+        vocabulary=INDUSTRY_KEYWORDS,
+        ngram_range=(1, 2),  # Include bigrams
+        stop_words='english'
+    )
     tfidf_matrix = vectorizer.fit_transform(preprocessed_texts)
     
     # Calculate cosine similarity

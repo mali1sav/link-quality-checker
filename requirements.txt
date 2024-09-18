@@ -6,3 +6,4 @@ python-dotenv
 scikit-learn
 numpy
 openai
+nltk
