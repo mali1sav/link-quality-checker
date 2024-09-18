@@ -1,0 +1,60 @@
+Backlink Quality and Relevancy Analyser: Executional Flow
+
+
+1. Data Input
+   - The app accepts a CSV or Excel file containing backlink data.
+   - Required columns: Market, Source Domain, Target URL.
+   - This allows for bulk analysis of multiple backlinks across different markets.
+
+2. Data Processing
+   For each backlink (row in the input file):
+
+   a. Backlink Profile Analysis
+      - Utilises DataForSEO's API to fetch comprehensive backlink data.
+      - Key metrics: Spam Score, Referring Domains, Total Backlinks.
+      - This provides a quantitative assessment of the backlink's strength and potential risks.
+
+   b. SERP Data Retrieval
+      - Fetches SERP data for the source domain using DataForSEO's API.
+      - Retrieves top 20 organic results to gauge the domain's content and relevance.
+      - Adapts to different markets by using location-specific SERP results.
+
+   c. Content Relevancy Analysis
+      - Generates a summary of the source domain using GPT-4.
+      - For non-English content, translates SERP titles and descriptions to English.
+      - Computes content similarity between the source domain and RS Online using advanced NLP techniques:
+        * Uses TF-IDF vectorisation focused on industry-specific keywords.
+        * Calculates cosine similarity between the source content (summary, title, and description) and RS Online's description.
+      - This step ensures that the relevancy analysis is not hindered by language barriers and focuses on industry-specific content.
+
+   d. Overall Score Calculation
+      - Combines backlink profile metrics with content similarity score.
+      - Weighted average: 20% Spam Score, 20% Referring Domains, 20% Total Backlinks, 40% Content Similarity.
+      - This balanced approach considers both the backlink's strength and its relevance to RS Online's industry.
+
+   e. Verdict Generation
+      - Uses GPT-4 to generate a human-readable explanation of the backlink's quality and relevance.
+      - Provides context and insights beyond raw scores, helping in decision-making.
+
+3. Results Presentation
+   - Displays analysis results in an interactive Streamlit interface.
+   - For each backlink:
+     * Shows key metrics: Spam Score, Referring Domains, Total Backlinks, Content Similarity, Overall Score.
+     * Displays the generated explanation and verdict.
+     * Allows manual override of the verdict, accommodating human expertise.
+   - Offers functionality to update and save changes to verdicts.
+
+4. Data Export
+   - Provides an option to download the complete analysis as an Excel file.
+   - Includes all raw data and computed metrics for further analysis or reporting.
+
+Key Benefits:
+1. Efficient Bulk Analysis: Analyse numerous backlinks across different markets simultaneously.
+2. Comprehensive Evaluation: Combines technical SEO metrics with content relevancy analysis.
+3. Multilingual Capability: Effectively analyses backlinks from various language markets.
+4. Industry-Specific Focus: Tailored to the industrial and electronic components sector.
+5. Balanced Scoring: Considers both link strength and content relevance in the overall assessment.
+6. Actionable Insights: Provides human-readable explanations to guide link building strategies.
+7. Flexibility: Allows for manual verdict adjustments, integrating human expertise with AI-driven analysis.
+
+This tool empowers link building managers to make data-driven decisions, focusing efforts on high-quality, relevant backlinks that align with your industry and target markets. It streamlines the process of evaluating backlink portfolios, helping to optimize your link building strategy for maximum impact and ROI.
