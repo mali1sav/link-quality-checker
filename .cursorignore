@@ -1,9 +1,0 @@
-venv/
-*.csv
-*.pyc
-*.pyo
-*.pyd
-*.db
-*.sqlite3
-*.sqlite
-*.db3

@@ -3,35 +3,38 @@ import pandas as pd
 import openai
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
-from streamlit import session_state as state
 import os
 import requests
 import json
 from typing import List, Dict
 from dotenv import load_dotenv
 import io
+import time
 
 # Load environment variables from .env file in the current directory
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
 
-# Initialize OpenAI client
-openai.api_key = os.getenv("OPENAI_API_KEY")
-DATAFORSEO_API_KEY = os.getenv("DATAFORSEO_API_KEY")
+# Initialize session state
+if 'session_start' not in st.session_state:
+    st.session_state.session_start = time.time()
+    st.session_state.openai_api_key = ""
+    st.session_state.dataforseo_api_key = ""
+    st.session_state.quality_threshold = 60
+    st.session_state.results_df = None
 
-# Check for API credentials
-if not DATAFORSEO_API_KEY:
-    st.error("DataForSEO API key is missing. Please check your .env file and ensure DATAFORSEO_API_KEY is set.")
-    st.stop()
+# Check if session has expired (3 hours)
+if time.time() - st.session_state.session_start > 3 * 60 * 60:
+    st.session_state.clear()
+    st.session_state.session_start = time.time()
 
 st.set_page_config(layout="wide", page_title="Content Relevancy Analyser")
 
 # Constants
-QUALITY_THRESHOLD = 60  # Threshold for Good Quality verdict
 BATCH_SIZE = 3  # Number of domains to process in each batch
 
 # RS Online description
 RS_ONLINE_DESCRIPTION = """
-RS Online, or RS Components, is a global distributor of industrial and electronic products, serving a broad range of sectors and industries with a comprehensive selection of tools, equipment, and components.
+RS Components, or RS Online, is a global distributor of industrial and electronic products, serving a broad range of sectors and industries with a comprehensive selection of tools, equipment, and components.
 
 Key Target Sectors:
 Manufacturing and Industrial: Supports companies in automotive, aerospace, electronics, and general manufacturing sectors, providing components for automation, control, and maintenance systems.
@@ -52,7 +55,7 @@ MARKET_CODES = {
 def fetch_serp_data(domain: str, market: str) -> List[Dict]:
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
     headers = {
-        'Authorization': f'Basic {DATAFORSEO_API_KEY}',
+        'Authorization': f'Basic {st.session_state.dataforseo_api_key}',
         'Content-Type': 'application/json'
     }
     market_info = MARKET_CODES.get(market, MARKET_CODES['UK'])  # Default to UK if market not found
@@ -133,7 +136,6 @@ On a scale of 0 to 100, how similar is the content of the website to RS Online i
         st.warning(f"Invalid similarity score received: {response.choices[0].message.content.strip()}. Using default value of 50.")
         return 50.0
 
-
 def generate_source_summary(domain: str) -> str:
     prompt = f"Provide a one-sentence summary of what the website {domain} is about, based on its domain name."
     response = openai.chat.completions.create(
@@ -190,7 +192,7 @@ def analyse_relevancy_batch(df: pd.DataFrame, progress_bar, batch_size: int = BA
                 content_similarity = calculate_content_similarity(source_summary, serp_data, RS_ONLINE_DESCRIPTION, row['Market'])
                 explanation = generate_domain_explanation(row['Source Domain'], content_similarity)
 
-                verdict = "Relevant" if content_similarity >= QUALITY_THRESHOLD else "Not Relevant"
+                verdict = "Relevant" if content_similarity >= st.session_state.quality_threshold else "Not Relevant"
 
                 result = {
                     'Market': row['Market'],
@@ -227,8 +229,8 @@ def analyse_relevancy_batch(df: pd.DataFrame, progress_bar, batch_size: int = BA
         st.success(f"Processed batch {start_idx // batch_size + 1} of {(total_rows + batch_size - 1) // batch_size}")
 
     # After processing all batches, update state and reset index
-    state.results_df = pd.DataFrame(results).reset_index(drop=True)
-    return state.results_df
+    st.session_state.results_df = pd.DataFrame(results).reset_index(drop=True)
+    return st.session_state.results_df
 
 def display_results(results_df):
     st.subheader("Analysis Results")
@@ -239,20 +241,25 @@ def display_results(results_df):
                 st.metric("Content Similarity", row['Content Similarity'])
 
                 verdict_key = f"verdict_{idx}"
-                if verdict_key not in state:
-                    state[verdict_key] = row['Our Verdict']
+                if verdict_key not in st.session_state:
+                    st.session_state[verdict_key] = row['Our Verdict']
 
                 verdict = st.radio(
                     "Our Verdict:",
                     ["Relevant", "Not Relevant"],
                     key=f"verdict_radio_{idx}",  # Use a unique key for each radio button
-                    index=["Relevant", "Not Relevant"].index(state[verdict_key]),
-                    on_change=lambda: None  # Prevent collapsing on change
+                    index=["Relevant", "Not Relevant"].index(st.session_state[verdict_key]),
                 )
 
-                if state[verdict_key] != verdict:
-                    state[verdict_key] = verdict
+                if st.session_state[verdict_key] != verdict:
+                    st.session_state[verdict_key] = verdict
                     results_df.at[idx, 'Our Verdict'] = verdict
+
+                # Display colored verdict
+                if verdict == "Relevant":
+                    st.markdown(f"<p style='color:green;font-weight:bold;'>Verdict: {verdict}</p>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<p style='color:red;font-weight:bold;'>Verdict: {verdict}</p>", unsafe_allow_html=True)
 
             with col2:
                 st.write("**Explanation:**")
@@ -277,7 +284,7 @@ def generate_excel(results_df):
             if col_idx == 4:  # Content Similarity column
                 try:
                     score = float(value.strip('%'))
-                    if score < QUALITY_THRESHOLD:
+                    if score < st.session_state.quality_threshold:
                         cell.fill = PatternFill(start_color="FFCCCB", end_color="FFCCCB", fill_type="solid")
                     else:
                         cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
@@ -288,31 +295,45 @@ def generate_excel(results_df):
 
 st.title("Content Relevancy Analyser")
 
+# API Key and Threshold Settings
+st.sidebar.header("Settings")
+st.session_state.openai_api_key = st.sidebar.text_input("OpenAI API Key", value=st.session_state.openai_api_key, type="password")
+st.session_state.dataforseo_api_key = st.sidebar.text_input("DataForSEO API Key", value=st.session_state.dataforseo_api_key, type="password")
+st.session_state.quality_threshold = st.sidebar.slider("Relevancy Threshold", 0, 100, st.session_state.quality_threshold)
+
+# Initialize OpenAI client
+openai.api_key = st.session_state.openai_api_key
+
+# Check for API credentials
+if not st.session_state.dataforseo_api_key or not st.session_state.openai_api_key:
+    st.warning("Please enter your API keys in the sidebar to proceed.")
+    st.stop()
+
 # Main content area
 uploaded_file = st.file_uploader("Upload CSV or Excel file", type=['csv', 'xlsx', 'xls'])
 
 if uploaded_file is not None:
     try:
-        if 'df' not in state:
-            state.df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        if 'df' not in st.session_state:
+            st.session_state.df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
 
         st.subheader("Uploaded Data")
-        st.dataframe(state.df, height=200)
+        st.dataframe(st.session_state.df, height=200)
 
         if st.button("Analyse Content", key="analyse_button"):
             progress_bar = st.progress(0)
             with st.spinner("Analysing content..."):
-                state.results_df = analyse_relevancy_batch(state.df, progress_bar)
+                st.session_state.results_df = analyse_relevancy_batch(st.session_state.df, progress_bar)
             st.success("Analysis complete!")
-            display_results(state.results_df)
 
-        if 'results_df' in state:
-            display_results(state.results_df)
+        if st.session_state.results_df is not None:
+            display_results(st.session_state.results_df)
 
             if st.button("Update Results"):
                 st.success("Results updated successfully!")
+                st.session_state.results_df = st.session_state.results_df.copy()  # Force Streamlit to recognize the change
 
-            excel_data = generate_excel(state.results_df)
+            excel_data = generate_excel(st.session_state.results_df)
             st.download_button(
                 label="Download results as Excel",
                 data=excel_data,
